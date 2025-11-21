@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 import requests, time, re
 from bs4 import BeautifulSoup
+from flask_cors import CORS   # <-- Added
 
 app = Flask(__name__)
+CORS(app)  # <-- Added (Global CORS enable)
 
 # Simple in-memory cache: rc_number -> (timestamp, data)
 CACHE = {}
@@ -22,7 +24,6 @@ def is_cached(rc):
     ts, data = ent
     if time.time() - ts < CACHE_TTL:
         return data
-    # expired
     CACHE.pop(rc, None)
     return None
 
@@ -105,8 +106,11 @@ def get_vehicle_details(rc_number: str) -> dict:
     set_cache(rc, result)
     return result
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET", "OPTIONS"])  # <-- OPTIONS added
 def api_root():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200  # <-- Handles preflight
+
     rc_number = request.args.get("rc_number")
     if not rc_number:
         return jsonify({
