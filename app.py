@@ -110,7 +110,7 @@ def api_root():
     rc_number = request.args.get("rc_number")
     if not rc_number:
         return jsonify({
-            "credit": "API DEVELOPER: @HexAbhi",
+            "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "error",
             "message": "Missing required parameter: rc_number"
         }), 400
@@ -118,20 +118,20 @@ def api_root():
     details = get_vehicle_details(rc_number)
     if details.get("error"):
         return jsonify({
-            "credit": "API DEVELOPER: @HexAbhi",
+            "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "error",
             "message": details["error"]
         }), 502
 
     if not details.get("found"):
         return jsonify({
-            "credit": "API DEVELOPER: @HexAbhi",
+            "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "not_found",
             "message": f"No details found for {normalize_rc(rc_number)}"
         }), 404
 
     return jsonify({
-        "credit": "API DEVELOPER: @HexAbhi",
+        "credit": "API DEVELOPER: @KrsxhNvrDie",
         "status": "success",
         "rc_number": normalize_rc(rc_number),
         "details": details["data"]
