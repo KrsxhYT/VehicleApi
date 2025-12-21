@@ -1,142 +1,138 @@
 from flask import Flask, request, jsonify
-import requests, time, re
+import requests
 from bs4 import BeautifulSoup
-from flask_cors import CORS   # <-- Added
 
 app = Flask(__name__)
-CORS(app)  # <-- Added (Global CORS enable)
 
-# Simple in-memory cache: rc_number -> (timestamp, data)
-CACHE = {}
-CACHE_TTL = 10 * 60  # 10 minutes
-
-HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (Linux; Android 10; Mobile) "
-                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9"
-}
-
-def is_cached(rc):
-    ent = CACHE.get(rc)
-    if not ent:
-        return None
-    ts, data = ent
-    if time.time() - ts < CACHE_TTL:
-        return data
-    CACHE.pop(rc, None)
-    return None
-
-def set_cache(rc, value):
-    CACHE[rc] = (time.time(), value)
-
-def normalize_rc(rc: str) -> str:
-    return re.sub(r'\s+', '', rc.strip().upper())
-
-def fetch_html(url, headers=None, timeout=10):
-    hdrs = HEADERS.copy()
-    if headers:
-        hdrs.update(headers)
-    resp = requests.get(url, headers=hdrs, timeout=timeout)
-    resp.raise_for_status()
-    return resp.text
-
-def extract_by_label(soup, label):
-    try:
-        el = soup.find(lambda t: t.name in ("span", "label") and t.get_text(strip=True).strip() == label)
-        if el:
-            sib = el.find_next_sibling()
-            if sib and sib.get_text(strip=True):
-                return sib.get_text(strip=True)
-            parent = el.find_parent()
-            if parent:
-                p = parent.find("p")
-                if p and p.get_text(strip=True):
-                    return p.get_text(strip=True)
-
-        text_node = soup.find(string=lambda s: s and label in s)
-        if text_node:
-            parent = text_node.find_parent()
-            if parent:
-                p = parent.find("p")
-                if p and p.get_text(strip=True):
-                    return p.get_text(strip=True)
-
-        txt = soup.get_text(separator="\n")
-        m = re.search(re.escape(label) + r"[:\s\-]*([^\n]{2,200})", txt, re.IGNORECASE)
-        if m:
-            return m.group(1).strip()
-    except Exception:
-        return None
-    return None
-
+# ------------------- #
+# VEHICLE INFO FETCHER#
+# ------------------- #
 def get_vehicle_details(rc_number: str) -> dict:
-    rc = normalize_rc(rc_number)
-    cached = is_cached(rc)
-    if cached:
-        return {"_cached": True, **cached}
-
+    rc = rc_number.strip().upper()
     url = f"https://vahanx.in/rc-search/{rc}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+    }
+
     try:
-        html = fetch_html(url, timeout=12)
-        soup = BeautifulSoup(html, "html.parser")
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
     except requests.exceptions.RequestException as e:
-        return {"error": f"Network error: {e}"}
-    except Exception as e:
-        return {"error": f"Parse error: {e}"}
+        return {"error": f"Network error: {str(e)}"}
 
-    labels = [
-        "Owner Name", "Father's Name", "Owner Serial No", "Model Name",
-        "Maker Model", "Vehicle Class", "Fuel Type", "Fuel Norms",
-        "Registration Date", "Insurance Company", "Insurance No",
-        "Insurance Expiry", "Insurance Upto", "Fitness Upto", "Tax Upto",
-        "PUC No", "PUC Upto", "Financier Name", "Registered RTO",
-        "Address", "City Name", "Phone"
-    ]
+    def get_value(label):
+        try:
+            label_el = soup.find("span", string=label) or soup.find("strong", string=label)
+            if not label_el:
+                return None
+            parent = label_el.find_parent("div")
+            if not parent:
+                return None
+            val = parent.find("p") or parent.find("span", class_="value")
+            return val.get_text(strip=True) if val else None
+        except Exception:
+            return None
 
-    data = {}
-    found_any = False
-    for lab in labels:
-        val = extract_by_label(soup, lab)
-        if val:
-            found_any = True
-        data[lab] = val
+    error_block = soup.find("div", class_="error") or soup.find("div", class_="alert")
+    if error_block and "not found" in error_block.get_text(strip=True).lower():
+        return {"error": "Vehicle not found or invalid RC number"}
 
-    result = {"found": found_any, "data": data}
-    set_cache(rc, result)
-    return result
+    data = {
+        "Owner Name": get_value("Owner Name"),
+        "Father's Name": get_value("Father's Name"),
+        "Owner Serial No": get_value("Owner Serial No"),
+        "Model Name": get_value("Model Name"),
+        "Maker Model": get_value("Maker Model"),
+        "Vehicle Class": get_value("Vehicle Class"),
+        "Fuel Type": get_value("Fuel Type"),
+        "Fuel Norms": get_value("Fuel Norms"),
+        "Registration Date": get_value("Registration Date"),
+        "Insurance Company": get_value("Insurance Company"),
+        "Insurance No": get_value("Insurance No"),
+        "Insurance Upto": get_value("Insurance Upto"),
+        "Fitness Upto": get_value("Fitness Upto"),
+        "Tax Upto": get_value("Tax Upto"),
+        "PUC No": get_value("PUC No"),
+        "PUC Upto": get_value("PUC Upto"),
+        "Financier Name": get_value("Financier Name"),
+        "Registered RTO": get_value("Registered RTO"),
+        "Address": get_value("Address"),
+        "City Name": get_value("City Name"),
+        "Phone": get_value("Phone"),
+    }
 
-@app.route("/", methods=["GET", "OPTIONS"])  # <-- OPTIONS added
-def api_root():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "ok"}), 200  # <-- Handles preflight
+    return {k: v for k, v in data.items() if v}
 
-    rc_number = request.args.get("rc_number")
-    if not rc_number:
+# ------------------- #
+# HOMEPAGE            #
+# ------------------- #
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "service": "Vehicle RC Details API",
+        "usage": {
+            "GET": "/info?rc_number=DL01AB1234",
+            "POST": "/info  { rc_number }"
+        },
+        "status": "online"
+    })
+
+# ------------------- #
+# MAIN API (GET+POST) #
+# ------------------- #
+@app.route("/info", methods=["GET", "POST"])
+def info():
+    if request.method == "POST":
+        body = request.get_json(silent=True) or request.form
+        rc_number = body.get("rc_number")
+    else:
+        rc_number = request.args.get("rc_number")
+
+    if not rc_number or len(rc_number.strip()) < 3:
         return jsonify({
             "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "error",
-            "message": "Missing required parameter: rc_number"
+            "message": "Invalid or missing rc_number"
         }), 400
 
     details = get_vehicle_details(rc_number)
+
     if details.get("error"):
         return jsonify({
             "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "error",
             "message": details["error"]
-        }), 502
+        }), 500
 
-    if not details.get("found"):
+    if not details:
         return jsonify({
             "credit": "API DEVELOPER: @KrsxhNvrDie",
             "status": "not_found",
-            "message": f"No details found for {normalize_rc(rc_number)}"
+            "message": f"No details found for {rc_number}"
         }), 404
 
     return jsonify({
         "credit": "API DEVELOPER: @KrsxhNvrDie",
         "status": "success",
-        "rc_number": normalize_rc(rc_number),
-        "details": details["data"]
+        "rc_number": rc_number.strip().upper(),
+        "details": details
     })
+
+# ------------------- #
+# HEALTH CHECK        #
+# ------------------- #
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "service": "Vehicle RC Details API",
+        "version": "1.0"
+    })
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
