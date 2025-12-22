@@ -11,6 +11,8 @@ def get_vehicle_details(rc_number: str) -> dict:
     rc = rc_number.strip().upper()
     url = f"https://vahanx.in/rc-search/{rc}"
 
+    session = requests.Session()
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -19,51 +21,51 @@ def get_vehicle_details(rc_number: str) -> dict:
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, "html.parser")
     except requests.exceptions.RequestException as e:
         return {"error": f"Network error: {str(e)}"}
 
-    def get_value(label):
-        try:
-            label_el = soup.find("span", string=label) or soup.find("strong", string=label)
-            if not label_el:
-                return None
-            parent = label_el.find_parent("div")
-            if not parent:
-                return None
-            val = parent.find("p") or parent.find("span", class_="value")
-            return val.get_text(strip=True) if val else None
-        except Exception:
-            return None
-
     error_block = soup.find("div", class_="error") or soup.find("div", class_="alert")
     if error_block and "not found" in error_block.get_text(strip=True).lower():
         return {"error": "Vehicle not found or invalid RC number"}
 
+    # ⚡ FAST PARSE: build label → value map once
+    extracted = {}
+
+    for div in soup.find_all("div"):
+        label = div.find("span") or div.find("strong")
+        value = div.find("p") or div.find("span", class_="value")
+
+        if label and value:
+            key = label.get_text(strip=True)
+            val = value.get_text(strip=True)
+            if key and val:
+                extracted[key] = val
+
     data = {
-        "Owner Name": get_value("Owner Name"),
-        "Father's Name": get_value("Father's Name"),
-        "Owner Serial No": get_value("Owner Serial No"),
-        "Model Name": get_value("Model Name"),
-        "Maker Model": get_value("Maker Model"),
-        "Vehicle Class": get_value("Vehicle Class"),
-        "Fuel Type": get_value("Fuel Type"),
-        "Fuel Norms": get_value("Fuel Norms"),
-        "Registration Date": get_value("Registration Date"),
-        "Insurance Company": get_value("Insurance Company"),
-        "Insurance No": get_value("Insurance No"),
-        "Insurance Upto": get_value("Insurance Upto"),
-        "Fitness Upto": get_value("Fitness Upto"),
-        "Tax Upto": get_value("Tax Upto"),
-        "PUC No": get_value("PUC No"),
-        "PUC Upto": get_value("PUC Upto"),
-        "Financier Name": get_value("Financier Name"),
-        "Registered RTO": get_value("Registered RTO"),
-        "Address": get_value("Address"),
-        "City Name": get_value("City Name"),
-        "Phone": get_value("Phone"),
+        "Owner Name": extracted.get("Owner Name"),
+        "Father's Name": extracted.get("Father's Name"),
+        "Owner Serial No": extracted.get("Owner Serial No"),
+        "Model Name": extracted.get("Model Name"),
+        "Maker Model": extracted.get("Maker Model"),
+        "Vehicle Class": extracted.get("Vehicle Class"),
+        "Fuel Type": extracted.get("Fuel Type"),
+        "Fuel Norms": extracted.get("Fuel Norms"),
+        "Registration Date": extracted.get("Registration Date"),
+        "Insurance Company": extracted.get("Insurance Company"),
+        "Insurance No": extracted.get("Insurance No"),
+        "Insurance Upto": extracted.get("Insurance Upto"),
+        "Fitness Upto": extracted.get("Fitness Upto"),
+        "Tax Upto": extracted.get("Tax Upto"),
+        "PUC No": extracted.get("PUC No"),
+        "PUC Upto": extracted.get("PUC Upto"),
+        "Financier Name": extracted.get("Financier Name"),
+        "Registered RTO": extracted.get("Registered RTO"),
+        "Address": extracted.get("Address"),
+        "City Name": extracted.get("City Name"),
+        "Phone": extracted.get("Phone"),
     }
 
     return {k: v for k, v in data.items() if v}
@@ -95,7 +97,7 @@ def info():
 
     if not rc_number or len(rc_number.strip()) < 3:
         return jsonify({
-            "credit": "API DEVELOPER: @KrsxhNvrDie",
+            "credit": "API DEVELOPER: @J4TNX",
             "status": "error",
             "message": "Invalid or missing rc_number"
         }), 400
@@ -104,20 +106,20 @@ def info():
 
     if details.get("error"):
         return jsonify({
-            "credit": "API DEVELOPER: @KrsxhNvrDie",
+            "credit": "API DEVELOPER: @J4TNX",
             "status": "error",
             "message": details["error"]
         }), 500
 
     if not details:
         return jsonify({
-            "credit": "API DEVELOPER: @KrsxhNvrDie",
+            "credit": "API DEVELOPER: @J4TNX",
             "status": "not_found",
             "message": f"No details found for {rc_number}"
         }), 404
 
     return jsonify({
-        "credit": "API DEVELOPER: @KrsxhNvrDie",
+        "credit": "API DEVELOPER: @J4TNX",
         "status": "success",
         "rc_number": rc_number.strip().upper(),
         "details": details
