@@ -31,7 +31,6 @@ def get_vehicle_details(rc_number: str) -> dict:
     if error_block and "not found" in error_block.get_text(strip=True).lower():
         return {"error": "Vehicle not found or invalid RC number"}
 
-    # ⚡ FAST PARSE: build label → value map once
     extracted = {}
 
     for div in soup.find_all("div"):
@@ -71,31 +70,27 @@ def get_vehicle_details(rc_number: str) -> dict:
     return {k: v for k, v in data.items() if v}
 
 # ------------------- #
-# HOMEPAGE            #
+# ROOT = GET + POST   #
 # ------------------- #
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({
-        "service": "Vehicle RC Details API",
-        "usage": {
-            "GET": "/info?rc_number=DL01AB1234",
-            "POST": "/info  { rc_number }"
-        },
-        "status": "online"
-    })
-
-# ------------------- #
-# MAIN API (GET+POST) #
-# ------------------- #
-@app.route("/info", methods=["GET", "POST"])
-def info():
+@app.route("/", methods=["GET", "POST"])
+def root():
     if request.method == "POST":
         body = request.get_json(silent=True) or request.form
         rc_number = body.get("rc_number")
     else:
         rc_number = request.args.get("rc_number")
 
-    if not rc_number or len(rc_number.strip()) < 3:
+    if not rc_number:
+        return jsonify({
+            "service": "Vehicle RC Details API",
+            "usage": {
+                "GET": "/?rc_number=DL01AB1234",
+                "POST": "/  { rc_number }"
+            },
+            "status": "online"
+        })
+
+    if len(rc_number.strip()) < 3:
         return jsonify({
             "credit": "API DEVELOPER: @J4TNX",
             "status": "error",
